@@ -17,10 +17,11 @@ char *get_file_name (const char *name) {
   char name_temp[strlen(name) + 1];
   memcpy(name_temp, name, strlen(name) + 1);
 
-  char *current = strtok_r(name_temp, "/", &ptr_temp);
-  
+    
   char *next;
   char *ptr_temp;
+  char *current = strtok_r(name_temp, "/", &ptr_temp);
+
   if (current)
     next = strtok_r (NULL, "/", &ptr_temp);
 
@@ -44,9 +45,10 @@ struct dir *get_directory (const char* name) {
   else if (strcmp (name_temp, "/") == 0)
     return dir_open_root ();
 
-  char *current = strtok_r(name_temp, "/", &ptr_temp);
   char *next;
   char *ptr_temp;
+  char *current = strtok_r(name_temp, "/", &ptr_temp);
+
   if (current)
     next = strtok_r (NULL, "/", &ptr_temp);
 	
@@ -56,9 +58,8 @@ struct dir *get_directory (const char* name) {
     dir = dir_open_root ();
   else if (name_temp[0] == '/')
     dir = dir_open_root ();
-  } else {
+  else
     dir = dir_reopen (thread_current ()->cur_dir);
-  }
 
   while (next != NULL){
     if (strcmp (current, ".") != 0){
@@ -138,7 +139,7 @@ filesys_create (const char *name, off_t initial_size, bool is_dir)
 	if(!success) goto done;
     success = inode_create (sector, initial_size, is_dir);
 	if(!success) goto done;
-    success = dir_add (dir, file, sector));
+    success = dir_add (dir, file, sector);
 	if(!success) goto done;
 
   if (!success && sector != 0) 
