@@ -306,7 +306,7 @@ void sys_close (int fd) {
 }
 
 bool sys_chdir(char* dir){
-  return change_dir(dir);
+  return change_directory(dir);
 }
 
 bool sys_mkdir(char* dir){
