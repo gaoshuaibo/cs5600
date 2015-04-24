@@ -115,7 +115,7 @@ filesys_done (void)
 bool
 change_directory (const char* dir_name){
 
-  char *file = get_name (dir_name);
+  char *file = get_name_for_file (dir_name);
   struct dir *dir = get_dir_by_name (dir_name);
 
   if (strcmp (dir_name, "/") == 0){
@@ -177,7 +177,7 @@ filesys_create (const char *name, off_t initial_size, bool is_dir)
   }  
 
   block_sector_t sector = 0;
-  char * file = get_name (name);
+  char * file = get_name_for_file (name);
   struct dir *dir = get_dir_by_name (name);
  if(dir == NULL)
     goto done;
@@ -218,7 +218,7 @@ filesys_open (const char *name)
     return dir_open_root ();
   }
 
-  char *file = get_name (name);
+  char *file = get_name_for_file (name);
   struct dir *dir = get_dir_by_name (name);
   
   struct inode *inode = NULL;
@@ -263,7 +263,7 @@ filesys_remove (const char *name)
   if (strcmp (name, "/") == 0){
     goto done;
   }
-  char *file = get_name (name);
+  char *file = get_name_for_file (name);
   struct dir *dir = get_dir_by_name (name);
   if(dir == NULL) goto done;
   success = dir_remove (dir, file);
