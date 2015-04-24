@@ -1,0 +1,373 @@
+			+--------------------+
+			|        CS 140      |
+			| PROJECT 1: THREADS |
+			|   DESIGN DOCUMENT  |
+			+--------------------+
+				   
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Shuaibo  Gao <gao.shua@husky.neu.edu>
+Neil Locketz <locketz.n@husky.neu.edu>
+Alexander Jo <alexjo@ccs.neu.edu>
+
+---- PRELIMINARIES ----
+
+			     
+			     ALARM CLOCK
+			     ===========
+
+---- DATA STRUCTURES ----
+-Added wakeup_ticks to struct thread.
+	Identifies the time the thread needs to be woken up if it is sleeping.
+
+
+---- ALGORITHMS ----
+A2.
+When timer_sleep is called it delegates the number of ticks to thread_sleep defined in thread.c.
+thread_sleep calculates the time that the current thread will wake up given the number of ticks and the current time.
+it then sets the wakeup_ticks field of the current thread struct to the calculated wakeup time from above.
+the current thread is added to the sleeping list such that the list continues to be sorted by wakeup time in ascending ordered.
+it then blocks the current thread.
+
+When the interrupt for the timer fires we call thread_tick() to increase the ticks for the running thread and call wake_sleepers with the current number of ticks.
+Wake sleepers wakes all of the threads in the sleeping list whose wakeup_ticks is < current_ticks. b/c the list is sorted all we need to do is check the first element, if it needs to wake up we continue to check until we find one that shouldn't wake up and remove all the threads that need to wake up and unblock all of them.
+we then call yield_on_priority which yields the current thread if there is a higher priority one in the running_list.
+
+A3.
+We made the sleeping_list act like a priorirty queue where threads that wake up sooner have a higher priority.
+Because of the priority queue we need only check the beginning of the list until we find a thread that shouldn't be woken up.
+This stops us from iterating over the entire list every time and minimizes time spent in the handler.
+
+---- SYNCHRONIZATION ----
+
+
+A4.
+During make_thread_sleep we turn off interrupts. By shutting off interrupts we ensure that the current thread will continue until it gets blocked, no thread switches can happen during this function. Since this is executed atomically, only one thread can call/be executing this function at a time. 
+
+
+>> A4: How are race conditions avoided when multiple threads call
+>> timer_sleep() simultaneously?
+
+A5.
+We disable interrupts which forces the thread to complete its addition to the sleeping list without interruption. if a thread is being put to sleep the timer will not arrest execution from it.
+
+>> A5: How are race conditions avoided when a timer interrupt occurs
+>> during a call to timer_sleep()?
+
+---- RATIONALE ----
+A6.
+The professor gave us an example implementation of this in his power point presentation. His implementation made no attempt to sort the sleeping list, causing the interrupt handler to run for a long time. We implemented a priority queue to save time in the interrupt handler. Another option would have been sorting the list every time the interrupt fires. this wastes sorts because the interrupt handler fires every tick and most of the time we would just be sorting an allready sorted list. We spent extra time in timer_sleep() so that we could save time in the more frequently called interrupt handler. 
+
+
+>> A6: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+			 PRIORITY SCHEDULING
+			 ===================
+
+---- DATA STRUCTURES ----
+In thread.h
+
+-Added actual_priority to the struct thread.
+	Specifies the actual priority of the thread in the case that it has recieved a priority donation.
+
+-Added struct lock *blocked_by
+        A pointer to the lock that is blocking this thread, or NULL if no such lock exists (I.E. the thread isn't waiting on a lock)
+-Added struct list waiting_on_me
+        A list of threads waiting on this thread to release a lock that it has acquired. The list is shared accross all locks that this thread owns.
+-Added struct list_elem lock_wait_elem
+        A list elem for this thread to be added to another threads waiting list. We only need one because a thread can only be waiting on a single lock at a time.
+In synch.c
+-Added struct thread *owner
+        A pointer to the owner of the semaphore_elem so that we can compare priorities and release the highest priority thread waiting on the condition. 
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+We have threads A,B,C,D,E
+Locks L1,L2,L3
+actual_priority:
+A:1 B:2 C:3 D:4 E:5
+
+The Situation:
+- E attempts to aquire L1
+- A owns L1 
+- D and E have attempted to aquire L1 and are blocked
+- B owns L2
+- A attempted to aquire L2 and is blocked b/c B owns L2
+- C owns L3
+- B attempted to aquire L3, and is blocked b/c C owns L3
+
+E -> L1 <- A -> L2 <- B -> L3 <- C
+     ^
+     |
+     D
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   L1   |  L2         |  1                | 1
+-----------------------------------------------------
+B   L2   |  L3         |  2                | 2
+-----------------------------------------------------
+C   L3   |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+
+Process:
+
+1. E donates priority to A becuase A owns L1 and has a lower priority then E
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   L1   |  L2         |  1                | 5
+-----------------------------------------------------
+B   L2   |  L3         |  2                | 2
+-----------------------------------------------------
+C   L3   |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+
+2. A donates the recieved priority to B b/c A is waiting on B to release L2 and B has a lower priority then A
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   L1   |  L2         |  1                | 5
+-----------------------------------------------------
+B   L2   |  L3         |  2                | 5
+-----------------------------------------------------
+C   L3   |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+
+3. B donates its new priority to C b/c because C owns L3 and has a lower priority then B
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   L1   |  L2         |  1                | 5
+-----------------------------------------------------
+B   L2   |  L3         |  2                | 5
+-----------------------------------------------------
+C   L3   |  NULL       |  3                | 5
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+
+
+4. C is not blocked by anything and since it now has the highest priority of unblocked threads, it can finish its execution and release L3
+5. C releases L3 and returns its priority to its actual priority (3)
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   L1   |  L2         |  1                | 5
+-----------------------------------------------------
+B   L2   |  L3         |  2                | 5
+-----------------------------------------------------
+C   NULL |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+
+6. B aquires L3 and completes its execution.
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   L1   |  L2         |  1                | 5
+-----------------------------------------------------
+B L2,L3  |  NULL       |  2                | 5
+-----------------------------------------------------
+C   NULL |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+7. B releases L2 and L3 and returns to its actual priority (2)
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   L1   |  L2         |  1                | 5
+-----------------------------------------------------
+B   NULL |  NULL       |  2                | 2
+-----------------------------------------------------
+C   NULL |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+
+
+8. A aquires L2 and completes its execution.
+
+    Owns |  blocked_by |  actual_priority  | priority
+A L1,L2  |  NULL       |  1                | 5
+-----------------------------------------------------
+B   NULL |  NULL       |  2                | 2
+-----------------------------------------------------
+C   NULL |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+
+
+10.It releases L1 and L2 and returns to its original priority (1)
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   NULL |  NULL       |  1                | 1
+-----------------------------------------------------
+B   NULL |  NULL       |  2                | 2
+-----------------------------------------------------
+C   NULL |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  L1         |  5                | 5
+-----------------------------------------------------
+
+
+11. Since E and D are both waiting on L1 when A releases it the higher priority one E gets the lock and completes its execution. 
+   
+    Owns |  blocked_by |  actual_priority  | priority
+A   NULL |  NULL       |  1                | 1
+-----------------------------------------------------
+B   NULL |  NULL       |  2                | 2
+-----------------------------------------------------
+C   NULL |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   L1   |  NULL       |  5                | 5
+-----------------------------------------------------
+
+13. E releases L1
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   NULL |  NULL       |  1                | 1
+-----------------------------------------------------
+B   NULL |  NULL       |  2                | 2
+-----------------------------------------------------
+C   NULL |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  L1         |  4                | 4
+-----------------------------------------------------
+E   NULL |  NULL       |  5                | 5
+-----------------------------------------------------
+
+12. Finally D can aquire L1 b/c no one else with a higher priority is waiting on it. D aquires and releases L1
+
+
+    Owns |  blocked_by |  actual_priority  | priority
+A   NULL |  NULL       |  1                | 1
+-----------------------------------------------------
+B   NULL |  NULL       |  2                | 2
+-----------------------------------------------------
+C   NULL |  NULL       |  3                | 3
+-----------------------------------------------------
+D   NULL |  NULL       |  4                | 4
+-----------------------------------------------------
+E   NULL |  NULL       |  5                | 5
+-----------------------------------------------------
+ 
+
+ 
+
+>> B2: Explain the data structure used to track priority donation.
+>> Use ASCII art to diagram a nested donation.  (Alternately, submit a
+>> .png file.)
+
+---- ALGORITHMS ----
+B3.
+sema_up always unblocks the thread with the highest priority on its waiting list first, via the rm_high_priority function. The rm_high_priority function iterates through the list and finds the thread with the highest priority, removes and returns it.
+
+>> B3: How do you ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first?
+
+B4.
+
+B4.
+1. thread A calls lock_acquire on lock L, but L is owned by B
+2. A sets it's blocked_by to L
+3. A is added to the waiting_on_me list of B
+4. sema_down keeps A in a waiting loop and if A is blocked it triggers a thread donation using the thread_donate() function
+5. thread_donate does (in psuedocode)
+  thread_to_check = current_thread;
+  //If the current thread is blocked and the one its waiting on has a higher priority
+  while(thread_to_check.blocked_by && thread_to_check.priority > thread_to_check.blocked_by.holder.priority){
+    //Set the thread its waiting for's priority to its priority
+    thread_to_check.blocked_by.holder.priority = thread_to_check.priority;
+    //Run again for the thread its waiting on (in case that thread is waiting on something it needs to donate too
+    thread_to_check = thread_to_check.blocked_by.holder;
+  }
+This runs for a max of DEPTH_OF_NESTED_PRIORITY (8)
+
+This ensures that all threads up to a chain of 8 deep will donate their priority if required.
+
+
+>> B4: Describe ed A call lock_acquire, require lock L, but L is owned by B.
+>> causes a priority donation.  How is nested donation handled?
+
+B5.
+
+0. Turn off interrupts
+1. Lock release sets the given locks holder to NULL.
+2. remove all threads in the holders waiting list that were waiting on the lock we are going to release.
+3. Reset the priority of this thread to its actual priority - removing any donations it may have recieved
+4. Checks if there is a thread still waiting on this one that has a higher priority and applys a donation.
+5. it then ups the semaphore which unblocks the highest priority thread waiting.
+6. it then calls yield_on_priority which will yeild the current thread given there is another ready thread with higher priority. or if we are in an external interrupt it calls intr_yield_on_return 
+
+
+>> B5: Describe the sequence of events when lock_release() is called
+>> on a lock that a higher-priority thread is waiting for.
+
+---- SYNCHRONIZATION ----
+B6.
+During the duration of thread_set_priority interrupts are disabled meaning race conditions are impossible. The risk is if a user thread is running this function and an interrupt wants to run the function aswell. Our implementation deals with this by forcing the user thread to complete the thread_set_priority before any interrupt can occur. If the interrupt calls the function first then it also has interrupts disabled, denying a thread switch. You cannot use a lock to avoid this race because an external interrupt is not allowed to wait on a lock, and there is no way to allow the user thread to finish first without potentially forcing an external interrupt to wait.
+
+
+>> B6: Describe a potential race in thread_set_priority() and explain
+>> how your implementation avoids it.  Can you use a lock to avoid
+>> this race?
+
+---- RATIONALE ----
+B7. Our first iteration of this project didn't have a waiting list on the threads, we found it difficult to keep track of information in the case that a thread changes its priority after a donation or when we weren't expecting it to.
+The way we resolved this was by adding a donation/waiting list named waiting_on_me, that way we can always use the references to the threads and get the most up to date priority information. It also helps in the case that a low priority thread recieved a donation to release a lock. It releases the lock and has more threads waiting on it to release a second lock. It needs to recieve another donation and we use the list to get the highest priority waiting thread to donate.
+In the second iteration we always sorted the list using list_sort before we pulled the front element off. We changed this to comparing all the elements in the list and removing the greatest. this saves us from unecessary sorting on allready sorted lists.
+
+>> B7: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?

@@ -1,0 +1,18 @@
+
+struct inode_dsk{
+  uint8_t type;
+};
+struct inode_dsk_file{
+  uint8_t type; // 0 = file, 1 = directory 
+  ...
+  ...
+  struct inode_dsk_file *next;
+  uint16_t sizes[same as number of sectors]
+  uint8_t used_blocks_in_array;
+  block_sector_t sectors[whatever is left]
+};
+struct inode_dsk_dir{
+  uint8_t type;
+  struct inode_dsk_dir *next;
+  struct inode_dsk children[whatever is left];
+};
