@@ -17,11 +17,10 @@ char *get_name_for_file (const char *name) {
   char name_temp[strlen(name) + 1];
   memcpy(name_temp, name, strlen(name) + 1);
 
-    
+  char *current = strtok_r(name_temp, "/", &ptr_temp);
+  
   char *next;
   char *ptr_temp;
-  char *current = strtok_r(name_temp, "/", &ptr_temp);
-
   if (current)
     next = strtok_r (NULL, "/", &ptr_temp);
 
@@ -45,10 +44,9 @@ struct dir *get_dir_by_name (const char* name) {
   else if (strcmp (name_temp, "/") == 0)
     return dir_open_root ();
 
+  char *current = strtok_r(name_temp, "/", &ptr_temp);
   char *next;
   char *ptr_temp;
-  char *current = strtok_r(name_temp, "/", &ptr_temp);
-
   if (current)
     next = strtok_r (NULL, "/", &ptr_temp);
 	
@@ -58,8 +56,9 @@ struct dir *get_dir_by_name (const char* name) {
     dir = dir_open_root ();
   else if (name_temp[0] == '/')
     dir = dir_open_root ();
-  else
+  } else {
     dir = dir_reopen (thread_current ()->cur_dir);
+  }
 
   while (next != NULL){
     if (strcmp (current, ".") != 0){
@@ -116,7 +115,7 @@ bool
 change_directory (const char* dir_name){
 
   char *file = get_name (dir_name);
-  struct dir *dir = get_dir_by_name (dir_name);
+  struct dir *dir = get_directory (dir_name);
 
   if (strcmp (dir_name, "/") == 0){
     dir_close (thread_current ()->cur_dir);
@@ -178,7 +177,7 @@ filesys_create (const char *name, off_t initial_size, bool is_dir)
 
   block_sector_t sector = 0;
   char * file = get_name (name);
-  struct dir *dir = get_dir_by_name (name);
+  struct dir *dir = get_directory (name);
  if(dir == NULL)
     goto done;
   if(strcmp(file, "..") == 0)
@@ -191,7 +190,7 @@ filesys_create (const char *name, off_t initial_size, bool is_dir)
 	if(!success) goto done;
     success = inode_create (sector, initial_size, is_dir);
 	if(!success) goto done;
-    success = dir_add (dir, file, sector);
+    success = dir_add (dir, file, sector));
 	if(!success) goto done;
 
   if (!success && sector != 0) 
@@ -219,7 +218,7 @@ filesys_open (const char *name)
   }
 
   char *file = get_name (name);
-  struct dir *dir = get_dir_by_name (name);
+  struct dir *dir = get_directory (name);
   
   struct inode *inode = NULL;
 
@@ -264,7 +263,7 @@ filesys_remove (const char *name)
     goto done;
   }
   char *file = get_name (name);
-  struct dir *dir = get_dir_by_name (name);
+  struct dir *dir = get_directory (name);
   if(dir == NULL) goto done;
   success = dir_remove (dir, file);
   dir_close (dir); 
